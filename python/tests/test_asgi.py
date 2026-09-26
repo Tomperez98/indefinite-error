@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -10,7 +11,7 @@ import pytest
 import indefinite_error
 from indefinite_error import Fault, _Abort, indefinite
 from indefinite_error.asgi import IndefiniteMiddleware
-from tests.helpers import DefiniteError
+from tests.helpers import DefiniteError, spec_rows
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, MutableMapping
@@ -222,10 +223,35 @@ def test_an_app_error_is_not_ours_to_answer() -> None:
         _call(IndefiniteMiddleware(app), _http(1))
 
 
-@pytest.mark.parametrize(
-    "raw", [b"", b"abc", b"1.5", b" 1", b"1 ", b"+1", b"--1", b"1" * 65, b"\xff"]
-)
+SEED_HEADER_CASES = [
+    (json.loads(values), None if outcome == "400" else int(outcome))
+    for values, outcome in spec_rows("seed-header.tsv")
+]
+
+
+@pytest.mark.parametrize(("values", "outcome"), SEED_HEADER_CASES, ids=str)
+def test_seed_header_matches_the_spec(values: list[str], outcome: int | None) -> None:
+    """A request runs under the spec's seed, or gets a 400 and never reaches the app."""
+    seeds: list[int] = []
+
+    async def app(scope: Scope, receive: Receive, send: Send) -> None:
+        injection = indefinite_error._active.get()  # noqa: SLF001
+        assert injection is not None
+        seeds.append(injection.seed)
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b""})
+
+    headers = [(b"x-indefinite-seed", v.encode()) for v in values]
+    sent = _call(IndefiniteMiddleware(app), {"type": "http", "headers": headers})
+    if outcome is None:
+        assert (sent[0]["status"], seeds) == (400, [])
+    else:
+        assert (sent[0]["status"], seeds) == (200, [outcome])
+
+
+@pytest.mark.parametrize("raw", [b"abc", b"\xff", b"1" * 65])
 def test_malformed_seed_is_a_400(raw: bytes) -> None:
+    """Bytes the spec's UTF-8 can't carry get a 400 too; the body says why."""
     state, app = _writing_app()
     sent = _call(IndefiniteMiddleware(app), _http(raw))
     assert sent == [
@@ -234,16 +260,9 @@ def test_malformed_seed_is_a_400(raw: bytes) -> None:
             "status": 400,
             "headers": [(b"content-type", b"text/plain")],
         },
-        {"type": "http.response.body", "body": b"X-Indefinite-Seed must be a decimal integer"},
+        {"type": "http.response.body", "body": b"X-Indefinite-Seed must be a decimal int64"},
     ]
     assert state == [], "the app never ran"
-
-
-@pytest.mark.parametrize("raw", [b"0", b"-1", b"9" * 64])
-def test_well_formed_seeds_are_accepted(raw: bytes) -> None:
-    _, app = _writing_app()
-    status, _ = _response(_call(IndefiniteMiddleware(app), _http(raw)))
-    assert status in {201, 500}
 
 
 # --- Exception groups: whose outcome wins ----------------------------------------

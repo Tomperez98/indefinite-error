@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import functools
+import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 import pytest
@@ -25,6 +27,36 @@ if TYPE_CHECKING:
 
 SEEDS = range(300)
 CALLS = 50
+
+
+def _spec_dir() -> Path:
+    """The repository's ``spec/``: the contract every implementation is tested against.
+
+    Found by walking up, so it resolves from ``tests/`` and from mutmut's copy alike.
+    """
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "spec" / "README.md").is_file():
+            return parent / "spec"
+    msg = f"no spec/README.md above {here}: tests run from a repository checkout"
+    raise FileNotFoundError(msg)
+
+
+SPEC = _spec_dir()
+
+
+def spec_rows(name: str) -> list[list[str]]:
+    """The tab-separated rows of ``spec/<name>``, without its ``#`` comments."""
+    text = (SPEC / name).read_text(encoding="utf-8")
+    return [line.split("\t") for line in text.splitlines() if line and not line.startswith("#")]
+
+
+def spec_site(cell: str) -> str:
+    """A site cell: a JSON string."""
+    site = json.loads(cell)
+    assert isinstance(site, str), f"site cell {cell!r} is not a JSON string"
+    return site
+
 
 type Op = Callable[[int], int]
 type Outcome = Literal["ok", "before", "after"]

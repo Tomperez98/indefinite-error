@@ -22,8 +22,9 @@ same factory -- or the same method on two instances -- share one fault stream.
 Pass ``name=`` to ``@indefinite`` to give each its own stable identity; it is
 required for lambdas and for callables that aren't functions.
 
-Every decision is derived from the request's seed alone: the same seed replays
-the same faults.
+Every decision is derived from the request's seed alone, an int64: the same
+seed replays the same faults, in any process and in any language that keeps
+the contract in the repository's ``spec/``.
 """
 
 from __future__ import annotations
@@ -93,6 +94,9 @@ def _abort(fault: Fault) -> NoReturn:
 
 
 # --- Pure core: every decision is a function of (seed, site, n) -------------
+
+# A seed is an int64, as in every implementation of spec/.
+_INT64 = range(-(2**63), 2**63)
 
 # Per-seed fault rates (swarm testing): some seeds are gentle, some brutal.
 _RATES: tuple[float, ...] = (0.01, 0.05, 0.2, 0.5)
@@ -214,7 +218,8 @@ def _inject(seed: int) -> Iterator[Injection]:
     ``asyncio.to_thread`` see it; a plain thread or executor only if its work
     runs inside ``contextvars.copy_context().run``.
     """
-    assert isinstance(seed, int) and not isinstance(seed, bool), f"seed {seed!r}"
+    assert isinstance(seed, int) and not isinstance(seed, bool), f"seed {seed!r} is not an int"
+    assert seed in _INT64, f"seed {seed} is not an int64"
     active = _active.get()
     if active is not None and not active.closed:
         msg = (

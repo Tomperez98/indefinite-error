@@ -141,9 +141,11 @@ cd examples/bank && uv run pytest
 ./ci stress   # the thread stress test, 50 times; run it on free-threaded 3.14t
 ```
 
-CI runs `./ci` on 3.12, 3.13, 3.14, and 3.14t. `tests/golden/schedule.txt`
-pins the fault schedule, so a change that would shift every saved seed fails
-loudly; regenerate it only on purpose, with
+CI runs `./ci` on 3.12, 3.13, 3.14, and 3.14t. The tests check this package
+against [`spec/`](../spec), the contract it shares with the [Go port](../go):
+the fault schedule, the fault lines, and which seed headers are accepted. A
+change that would shift every saved seed fails loudly, here and in Go;
+regenerate `spec/schedule.tsv` only on purpose, with
 `uv run python -m tests.test_core --regen`. Until the package is on PyPI, run
 from a clone with `uv sync`.
 

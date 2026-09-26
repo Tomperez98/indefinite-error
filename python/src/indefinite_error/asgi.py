@@ -9,8 +9,11 @@ that raises -- so this is the closest a request can come to vanishing. If the
 response had already started, the middleware re-raises, and the server closes
 the connection mid-response.
 
-Requests without the header, and non-HTTP scopes (lifespan, websocket), pass
-through untouched. Never install it in production: any caller could fault it.
+The seed must be exactly one decimal int64 header value
+(``spec/seed-header.tsv``); anything else gets a ``400``, and the app never
+sees the request. Requests without the header, and non-HTTP scopes (lifespan,
+websocket), pass through untouched. Never install it in production: any
+caller could fault it.
 """
 
 from __future__ import annotations
@@ -18,7 +21,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING, Any
 
-from indefinite_error import Fault, _Abort, _inject
+from indefinite_error import _INT64, Fault, _Abort, _inject
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, MutableMapping
@@ -33,8 +36,8 @@ __all__ = ["IndefiniteMiddleware"]
 SEED_HEADER = b"x-indefinite-seed"
 FAULT_HEADER = b"x-indefinite-fault"
 
-# A decimal integer, bounded: the header is untrusted input.
-_SEED = re.compile(rb"-?[0-9]{1,64}")
+# A decimal int64 has at most 19 digits: the header is untrusted input.
+_SEED = re.compile(rb"-?[0-9]{1,19}")
 
 
 class IndefiniteMiddleware:
@@ -44,11 +47,12 @@ class IndefiniteMiddleware:
         self.app = app
 
     async def __call__(self, scope: MutableMapping[str, Any], receive: Receive, send: Send) -> None:
-        raw = _seed_header(scope) if scope["type"] == "http" else None
-        if raw is None:
+        values = _seed_headers(scope) if scope["type"] == "http" else []
+        if not values:
             return await self.app(scope, receive, send)
-        if not _SEED.fullmatch(raw):
-            body = b"X-Indefinite-Seed must be a decimal integer"
+        seed = _parse_seed(values)
+        if seed is None:
+            body = b"X-Indefinite-Seed must be a decimal int64"
             return await _respond(send, 400, [(b"content-type", b"text/plain")], body)
 
         started = False
@@ -58,7 +62,7 @@ class IndefiniteMiddleware:
             started = started or message["type"] == "http.response.start"
             await send(message)
 
-        with _inject(int(raw)):
+        with _inject(seed):
             try:
                 return await self.app(scope, receive, tracking_send)
             except BaseException as exc:
@@ -69,12 +73,17 @@ class IndefiniteMiddleware:
         return None
 
 
-def _seed_header(scope: MutableMapping[str, Any]) -> bytes | None:
-    """The seed header's value, or ``None``. ASGI lowercases header names."""
-    for name, value in scope.get("headers", ()):
-        if name == SEED_HEADER:
-            return value
-    return None
+def _seed_headers(scope: MutableMapping[str, Any]) -> list[bytes]:
+    """Every value of the seed header. ASGI lowercases header names."""
+    return [value for name, value in scope.get("headers", ()) if name == SEED_HEADER]
+
+
+def _parse_seed(values: list[bytes]) -> int | None:
+    """The seed, if ``values`` is exactly one decimal int64 (``spec/seed-header.tsv``)."""
+    if len(values) != 1 or not _SEED.fullmatch(values[0]):
+        return None
+    seed = int(values[0])
+    return seed if seed in _INT64 else None
 
 
 def _aborted(exc: BaseException) -> Fault | None:

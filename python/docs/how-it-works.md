@@ -37,7 +37,9 @@ Each seed picks a fault rate and, per function, which phases may fault (`off`,
 `before`, `after`, `both`), so sweeping seeds covers gentle and brutal runs
 alike (swarm testing). Every decision is a hash of `(seed, function, call
 number)`, counted within the request: the same seed replays the same faults, in
-any process, and calls to one function never shift another's faults.
+any process, and calls to one function never shift another's faults. The
+[Go port](../../go) makes the same decisions: both are tested against
+[`spec/`](../../spec), which defines the hash exactly.
 
 ## Over HTTP, with Accordant
 
@@ -65,7 +67,10 @@ derived from one run seed (for concurrent test cases, from the test case and
 step, not a counter). Things to know:
 
 - The fault header is for debugging; the spec must not read it.
-- A malformed seed header gets a `400`; the app never sees the request.
+- A seed is an int64: exactly one `X-Indefinite-Seed` value of at most 19
+  digits, optionally negative. Anything else -- malformed, out of range, or
+  repeated -- gets a `400`, and the app never sees the request
+  ([`spec/seed-header.tsv`](../../spec/seed-header.tsv)).
   Requests without the header, and lifespan and websocket scopes, pass
   through untouched.
 - A task group wraps the fault in a `BaseExceptionGroup`; the middleware sees

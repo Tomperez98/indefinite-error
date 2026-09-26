@@ -1,12 +1,15 @@
 """The pure core: every decision is a function of (seed, site, n).
 
-Regenerate the golden schedule -- only when you mean to break every saved seed:
+This module generates ``spec/schedule.tsv``, the fault schedule every
+implementation must reproduce. Regenerate it only when you mean to break every
+saved seed, in every language:
 
     uv run python -m tests.test_core --regen
 """
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import subprocess
@@ -34,38 +37,41 @@ from indefinite_error import (
     _unit,
     indefinite,
 )
+from tests.helpers import SPEC, spec_rows, spec_site
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-# --- Golden schedule: saved seeds keep replaying the same faults ---------------
+# --- The schedule: saved seeds keep replaying the same faults, in any language ---
 
-GOLDEN = Path(__file__).parent / "golden" / "schedule.txt"
-GOLDEN_SEEDS = [*range(16), 41, -1, 2**64, 2**200]
-GOLDEN_SITES = ["app.commit", "app.get", "ünïcode.sïte", "a\x00b"]
-GOLDEN_CALLS = 64
+SCHEDULE = SPEC / "schedule.tsv"
+SCHEDULE_SEEDS = [*range(16), 41, -1, -(2**63), 2**63 - 1]
+SCHEDULE_SITES = ["app.commit", "app.get", "ünïcode.sïte", "a\x00b"]
+SCHEDULE_CALLS = 64
 _SYMBOL: dict[Phase | None, str] = {None: ".", "before": "b", "after": "a"}
 
 
 def render_schedule() -> str:
     lines = [
-        "# One line per (seed, site): mode, rate, then one char per call n=0..63.",
-        "# '.' no fault, 'b' before, 'a' after. Regenerate: uv run python -m tests.test_core --regen",
+        "# The fault schedule every implementation must reproduce: see README.md.",
+        "# Generated. Regenerate only to break every saved seed: see README.md.",
+        "# seed\tsite\tmode\trate\tcalls ('.' no fault, 'b' before, 'a' after; n = 0..63)",
     ]
-    for seed in GOLDEN_SEEDS:
+    for seed in SCHEDULE_SEEDS:
         rate = _rate(seed)
-        for site in GOLDEN_SITES:
+        for site in SCHEDULE_SITES:
             mode = _mode(seed, site)
             calls = "".join(
-                _SYMBOL[_decide(seed, rate, mode, site, n)] for n in range(GOLDEN_CALLS)
+                _SYMBOL[_decide(seed, rate, mode, site, n)] for n in range(SCHEDULE_CALLS)
             )
-            lines.append(f"{seed} {site!r} {mode} {rate} {calls}")
+            cells = [str(seed), json.dumps(site, ensure_ascii=False), mode, str(rate), calls]
+            lines.append("\t".join(cells))
     return "\n".join(lines) + "\n"
 
 
-def test_schedule_matches_golden() -> None:
-    """A change here breaks every seed users saved from a failing run."""
-    assert render_schedule() == GOLDEN.read_text(encoding="utf-8")
+def test_schedule_matches_the_spec() -> None:
+    """A change here breaks every seed users saved from a failing run, in every language."""
+    assert render_schedule() == SCHEDULE.read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("hash_seed", ["0", "1", "random"])
@@ -77,7 +83,7 @@ def test_schedule_is_the_same_in_any_process(hash_seed: str) -> None:
     out = subprocess.run(
         [sys.executable, "-c", code], cwd=root, env=env, capture_output=True, check=True
     )
-    assert out.stdout.decode() == GOLDEN.read_text(encoding="utf-8")
+    assert out.stdout.decode() == SCHEDULE.read_text(encoding="utf-8")
 
 
 def test_parts_cannot_run_together() -> None:
@@ -188,6 +194,7 @@ def _assert_even[T](counts: Counter[T], options: tuple[T, ...]) -> None:
 # --- Properties -----------------------------------------------------------------
 
 parts = st.lists(st.one_of(st.integers(), st.text()), max_size=5)
+int64s = st.integers(-(2**63), 2**63 - 1)  # a seed, as spec/ defines it
 
 
 @given(parts)
@@ -195,7 +202,7 @@ def test_unit_is_in_the_unit_interval(values: list[int | str]) -> None:
     assert 0.0 <= _unit(*values) < 1.0
 
 
-@given(st.integers(), st.text(), st.integers(min_value=0), st.floats(0, 1), st.sampled_from(_MODES))
+@given(int64s, st.text(), st.integers(min_value=0), st.floats(0, 1), st.sampled_from(_MODES))
 def test_decide_only_returns_phases_the_mode_allows(
     seed: int, site: str, n: int, rate: float, mode: Mode
 ) -> None:
@@ -209,7 +216,7 @@ def test_decide_only_returns_phases_the_mode_allows(
 
 
 @given(
-    seed=st.integers(),
+    seed=int64s,
     sites=st.lists(
         st.text(min_size=1).filter(lambda s: s.isprintable() and not any(c.isspace() for c in s)),
         min_size=1,
@@ -250,9 +257,35 @@ def test_injection_matches_a_reference_model(
     assert inj.calls == dict(counts)
 
 
+# --- Fault lines: spec/faults.tsv ---------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("seed", "site", "n", "payload"),
+    [
+        (int(seed), spec_site(site), int(n), payload)
+        for seed, site, n, payload in spec_rows("faults.tsv")
+    ],
+)
+def test_fault_lines_match_the_spec(
+    seed: int, site: str, n: int, payload: str, capfd: pytest.CaptureFixture[str]
+) -> None:
+    """Call n of site faults with the spec's payload, and writes it on the line."""
+    op = indefinite(name=site)(lambda: None)
+    faults: list[Fault] = []
+    with _inject(seed):
+        for _ in range(n + 1):
+            try:
+                op()
+            except _Abort as e:
+                faults.append(e.fault)
+    assert faults, f"no call to {site} faulted"
+    assert (faults[-1].n, str(faults[-1])) == (n, payload)
+    assert capfd.readouterr().err.splitlines()[-1] == f"indefinite-error: {payload}"
+
+
 if __name__ == "__main__":
     if sys.argv[1:] != ["--regen"]:
         sys.exit("usage: python -m tests.test_core --regen")
-    GOLDEN.parent.mkdir(exist_ok=True)
-    GOLDEN.write_text(render_schedule(), encoding="utf-8")
-    print(f"wrote {GOLDEN}")  # noqa: T201
+    SCHEDULE.write_text(render_schedule(), encoding="utf-8")
+    print(f"wrote {SCHEDULE}")  # noqa: T201

@@ -17,8 +17,8 @@ from tests.helpers import CALLS, SEEDS, attempt, mode_of, run, seed_where
 # --- The seed -----------------------------------------------------------------
 
 
-@pytest.mark.parametrize("seed", ["1", 1.0, True, None])
-def test_seed_must_be_int(seed: object) -> None:
+@pytest.mark.parametrize("seed", ["1", 1.0, True, None, 2**63, -(2**63) - 1])
+def test_seed_must_be_int64(seed: object) -> None:
     """The middleware parses the header; anything else here is its bug."""
     with (
         pytest.raises(AssertionError, match="seed"),
@@ -27,9 +27,9 @@ def test_seed_must_be_int(seed: object) -> None:
         pass
 
 
-@given(st.integers())
-def test_any_int_is_a_seed(seed: int) -> None:
-    """Negative, zero, and far past 64 bits: all valid, all replayable."""
+@given(st.integers(-(2**63), 2**63 - 1))
+def test_any_int64_is_a_seed(seed: int) -> None:
+    """Negative, zero, and the extremes: all valid, all replayable."""
     op = indefinite(name="any")(lambda i: i * 2)
     first = run(seed, op, calls=5)
     assert run(seed, op, calls=5) == first
