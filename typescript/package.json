@@ -1,0 +1,41 @@
+{
+  "name": "indefinite-error",
+  "version": "0.1.0",
+  "description": "Reproducibly inject indefinite errors (did it happen or not?) into the boundaries of your system.",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "bun": "./src/node.ts",
+      "default": "./dist/node.js"
+    }
+  },
+  "files": ["dist", "src", "!src/**/*.test.ts"],
+  "engines": {
+    "bun": ">=1.2",
+    "node": ">=20"
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "bun test",
+    "test:node": "bun run build && node test/node-smoke.mjs",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "ci": "bun run check && bun test --coverage && bun run build"
+  },
+  "dependencies": {
+    "@noble/hashes": "2.4.0"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "@types/express": "5.0.6",
+    "express": "5.2.1",
+    "fast-check": "4.10.2",
+    "typescript": "7.0.2"
+  }
+}
