@@ -124,6 +124,21 @@ a second time. That is the bug this crate exists to find. `seed=0` runs clean.
    [Accordant](https://microsoft.github.io/accordant/docs/how-to/indefinite-failures.html)
    drives the two branches for you.
 
+## Example: a bank that must not double-count
+
+[`examples/bank`](examples/bank) is an axum bank with a retrying client. Under
+injection an unkeyed deposit double-counts, and the fault lines say why; an
+idempotency key fixes it. [Walkthrough →](examples/bank)
+
+| | runs wrong (of 50) |
+|---|---|
+| unkeyed deposits | 39 — e.g. `balance 21, expected 20` |
+| keyed deposits | 0 |
+
+```sh
+cd examples/bank && cargo test
+```
+
 ## Details and caveats
 
 - **Pass a lazy future.** `before` means `op` is dropped without being
@@ -176,8 +191,13 @@ where that page says `BaseException`, read "the request's future is dropped".
 
 ```sh
 cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
+cargo +1.86 test                                     # the minimum supported Rust
 PROPTEST_CASES=100000 cargo test --lib tests::core   # long property runs
 ```
+
+Keep `cargo +1.86 test` in CI: clippy's MSRV lint checks standard-library
+APIs, not language features such as let chains, so only an old toolchain
+catches those.
 
 The tests check this crate against [`spec/`](../spec), the contract it shares
 with the other ports: the fault schedule, the fault lines, and which seed

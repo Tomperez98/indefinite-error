@@ -155,10 +155,10 @@ impl<F: Future> Future for Run<F> {
         let this = self.project();
         if let State::Start = this.state {
             // Site::new, const or not, already rejected every bad ASCII name.
-            if !this.site.is_ascii()
-                && let Err(msg) = check_site(this.site)
-            {
-                panic!("{msg}");
+            if !this.site.is_ascii() {
+                if let Err(msg) = check_site(this.site) {
+                    panic!("{msg}");
+                }
             }
             // The call starts at its first poll: that's where it runs.
             *this.state = match injection::current().map(|i| (i.next(this.site), i)) {

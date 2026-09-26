@@ -25,3 +25,10 @@ serde = "1"
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "io-util", "time"] }
 tower = { version = "0.5", features = ["util"] }
+
+[workspace]
+# Each example is its own crate with its own dependencies, resolved with the
+# library into one lockfile. The examples are default members, so `cargo test`
+# at the root runs their tests too, and they can't rot.
+members = ["examples/bank"]
+default-members = [".", "examples/bank"]
