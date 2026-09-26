@@ -1,0 +1,58 @@
+# The merge gate for python/. Glue only: set up uv, then run the same ./ci a
+# developer runs. uv's version comes from `required-version` in pyproject.toml.
+name: python
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions: {}
+
+# Cancel superseded runs on pull requests only: every commit on main keeps its result.
+concurrency:
+  group: python-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    working-directory: python
+
+jobs:
+  fast:
+    name: format, lint, types, build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          working-directory: python
+      - run: ./ci fast
+      - run: ./ci build
+
+  test:
+    name: test (${{ matrix.python }})
+    needs: fast
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.14t is free-threaded: the only build where a missing lock loses calls.
+        python: ["3.12", "3.13", "3.14", "3.14t"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          working-directory: python
+          python-version: ${{ matrix.python }}
+      - run: ./ci test

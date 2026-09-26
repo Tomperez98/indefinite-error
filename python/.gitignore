@@ -1,0 +1,22 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+.venv.nosync
+
+.coverage
+
+# Mutation-testing working copy and results (mutmut)
+mutants/
+
+# Smoke-test venv created by `mise run smoke`
+.smoke/
+
+# Hypothesis example database
+.hypothesis/
