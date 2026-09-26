@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/examples/">
+    <Project Path="examples/Bank.Tests/Bank.Tests.csproj" />
+    <Project Path="examples/Bank/Bank.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/IndefiniteError.AspNetCore/IndefiniteError.AspNetCore.csproj" />
+    <Project Path="src/IndefiniteError/IndefiniteError.csproj" />
+  </Folder>
+  <Folder Name="/test/">
+    <Project Path="test/IndefiniteError.Tests/IndefiniteError.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -8,6 +8,8 @@ boundaries of your system.
 - [Rust](rust): `Site::run` and a tower layer, for axum, hyper, and tonic.
 - [TypeScript](typescript): `indefinite(name, fn)`, with middleware for fetch
   handlers (`Bun.serve`, Hono) and for Node's `http` (Express, Connect).
+- [.NET](dotnet): `IndefiniteSite.RunAsync` and ASP.NET Core middleware
+  (`UseIndefiniteErrors`), plus an `HttpClient` handler for outgoing calls.
 
 All are tested against [`spec/`](spec), the contract they share: a seed
 replays the same faults in any of these languages.
