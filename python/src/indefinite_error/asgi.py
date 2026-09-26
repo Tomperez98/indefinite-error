@@ -21,7 +21,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING, Any
 
-from indefinite_error import _INT64, Fault, _Abort, _inject
+from indefinite_error import _INT64, _aborted, _inject
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, MutableMapping
@@ -84,29 +84,6 @@ def _parse_seed(values: list[bytes]) -> int | None:
         return None
     seed = int(values[0])
     return seed if seed in _INT64 else None
-
-
-def _aborted(exc: BaseException) -> Fault | None:
-    """The fault that ended this request, if one did.
-
-    A task group wraps it in a ``BaseExceptionGroup``. Alongside ordinary
-    exceptions the fault still ended the request; alongside a teardown
-    (``KeyboardInterrupt``, ``SystemExit``, cancellation) the teardown wins.
-    """
-    if isinstance(exc, _Abort):
-        return exc.fault
-    if not isinstance(exc, BaseExceptionGroup):
-        return None
-    aborts, rest = exc.split(_Abort)
-    if aborts is None:
-        return None
-    if rest is not None and rest.split(Exception)[1] is not None:
-        return None  # a teardown rides along: it outranks the fault
-    first: BaseException = aborts
-    while isinstance(first, BaseExceptionGroup):
-        first = first.exceptions[0]
-    assert isinstance(first, _Abort), f"split(_Abort) yielded {first!r}"
-    return first.fault
 
 
 async def _respond(

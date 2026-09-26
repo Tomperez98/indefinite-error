@@ -3,7 +3,7 @@
 Reproducibly inject indefinite errors (did it happen or not?) into the
 boundaries of your system.
 
-- [Python](python): `@indefinite` and an ASGI middleware.
+- [Python](python): `@indefinite` and ASGI or WSGI middleware.
 - [Go](go): `indefinite.Site` and a `net/http` middleware.
 - [Rust](rust): `Site::run` and a tower layer, for axum, hyper, and tonic.
 - [TypeScript](typescript): `indefinite(name, fn)`, with middleware for fetch

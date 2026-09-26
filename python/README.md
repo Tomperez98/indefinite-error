@@ -107,11 +107,29 @@ seed=0: status=200, ledger=[1]
 the write committed, so a client that retries on the `500` applies it a second
 time — the bug this library exists to find. `seed=0` runs clean.
 
+## WSGI: Flask, Django, Pyramid
+
+The decorator is the same; only the adapter changes.
+
+```python
+from indefinite_error.wsgi import IndefiniteMiddleware
+
+app = IndefiniteMiddleware(app)
+```
+
+A WSGI server has no way to drop a connection before the response starts, so
+the middleware holds the app's `start_response` until the first body chunk. A
+fault before that chunk answers `500` with `X-Indefinite-Fault` naming it; a
+fault after the response has committed re-raises, and the server closes the
+connection mid-response. A WSGI server folds a repeated header into one
+comma-separated value, which is a `400` like any other malformed seed.
+
 ## Use it on your service
 
 1. Put `@indefinite` on the calls whose outcome can get lost: database commits,
    calls to other services, messages you publish.
-2. Install `IndefiniteMiddleware` behind a flag that is off in production.
+2. Install `IndefiniteMiddleware` — from `indefinite_error.asgi` or
+   `indefinite_error.wsgi` — behind a flag that is off in production.
 3. Send a different seed on every request, derived from one run seed. Treat a
    `500` as "may or may not have happened", and check your invariants afterwards.
    From .NET, [Accordant](https://microsoft.github.io/accordant/docs/how-to/indefinite-failures.html)

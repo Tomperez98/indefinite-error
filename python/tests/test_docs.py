@@ -36,7 +36,7 @@ def test_every_block_parses(block: str) -> None:
 def test_quickstart_installs_the_middleware() -> None:
     """The first block runs as written, given an ``app`` to wrap."""
     app = object()
-    namespace = _exec("app = object()\n" + _block("IndefiniteMiddleware(app)"))
+    namespace = _exec("app = object()\n" + _block("@indefinite  # mark the boundary write"))
     assert isinstance(namespace["app"], IndefiniteMiddleware)
     assert type(namespace["app"].app) is type(app)
     assert namespace["commit"].__indefinite_site__ == "readme.commit"
