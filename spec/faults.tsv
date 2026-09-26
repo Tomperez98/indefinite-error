@@ -1,0 +1,8 @@
+# Fault lines every implementation must write: see README.md. Hand-written.
+# Call site n+1 times in one request seeded seed: call n faults with this payload.
+# seed	site	n	payload
+13	"app.get"	4	after app.get#4 (seed=13)
+0	"db.commit"	0	before db.commit#0 (seed=0)
+-1	"ünïcode.sïte"	31	before ünïcode.sïte#31 (seed=-1)
+-9223372036854775808	"app.get"	10	before app.get#10 (seed=-9223372036854775808)
+9223372036854775807	"db.commit"	0	after db.commit#0 (seed=9223372036854775807)

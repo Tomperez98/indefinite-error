@@ -1,0 +1,28 @@
+# How a server reads X-Indefinite-Seed: see README.md. Hand-written.
+# values: every X-Indefinite-Seed value the request carries, as a JSON array.
+# outcome: the seed the request runs under, or 400 if the app must never see it.
+# values	outcome
+["0"]	0
+["-1"]	-1
+["007"]	7
+["-0"]	0
+["0000000000000000001"]	1
+["9223372036854775807"]	9223372036854775807
+["-9223372036854775808"]	-9223372036854775808
+["9223372036854775808"]	400
+["-9223372036854775809"]	400
+["00000000000000000001"]	400
+[""]	400
+["-"]	400
+["abc"]	400
+["1.5"]	400
+["1e3"]	400
+[" 1"]	400
+["1 "]	400
+["+1"]	400
+["--1"]	400
+["1_0"]	400
+["0x1"]	400
+["٣"]	400
+["1","2"]	400
+["1","1"]	400

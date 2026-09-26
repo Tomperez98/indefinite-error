@@ -1,0 +1,58 @@
+[project]
+name = "indefinite-error"
+version = "0.1.0"
+description = "Reproducibly inject indefinite errors (did it happen or not?) into the boundaries of your system."
+readme = "README.md"
+authors = [
+    { name = "Tomas Perez Alvarez", email = "tomasperezalvarez@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = []
+
+[build-system]
+requires = ["uv_build>=0.12.17,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.workspace]
+# Each example is its own project with its own dependencies, resolved together
+# with the library into one lockfile.
+members = ["examples/*"]
+
+[tool.uv.sources]
+# The root dev group depends on the examples, so `uv run pytest` at the root
+# installs their dependencies and runs their tests too.
+indefinite-error-bank = { workspace = true }
+
+[tool.pytest.ini_options]
+# Examples are workspace members but run in the root gate too, so they can't rot.
+testpaths = ["tests", "examples"]
+# A "coroutine was never awaited" warning means an operation silently didn't run.
+filterwarnings = ["error"]
+
+[tool.coverage.run]
+branch = true
+source = ["indefinite_error"]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+skip_covered = true
+
+[tool.ty.rules]
+unused-ignore-comment = "error"
+
+[tool.mutmut]
+source_paths = ["src/indefinite_error/"]
+pytest_add_cli_args_test_selection = ["tests/"]
+also_copy = ["README.md"]
+
+[dependency-groups]
+dev = [
+    "coverage>=7.16.1",
+    "hypothesis>=6.168.1",
+    "pytest>=9.1.1",
+    "ruff>=0.16.9",
+    "ty>=0.0.84",
+    "mutmut>=3.8.0",
+    "indefinite-error-bank",
+]
