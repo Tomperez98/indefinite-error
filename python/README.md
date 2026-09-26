@@ -142,9 +142,9 @@ cd examples/bank && uv run pytest
 ```
 
 CI runs `./ci` on 3.12, 3.13, 3.14, and 3.14t. The tests check this package
-against [`spec/`](../spec), the contract it shares with the [Go port](../go):
+against [`spec/`](../spec), the contract it shares with the [Go](../go) and [Rust](../rust) ports:
 the fault schedule, the fault lines, and which seed headers are accepted. A
-change that would shift every saved seed fails loudly, here and in Go;
+change that would shift every saved seed fails loudly, here, in Go, and in Rust;
 regenerate `spec/schedule.tsv` only on purpose, with
 `uv run python -m tests.test_core --regen`. Until the package is on PyPI, run
 from a clone with `uv sync`.

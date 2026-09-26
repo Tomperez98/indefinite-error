@@ -1,6 +1,6 @@
 # The indefinite-error contract
 
-Every implementation ([Python](../python), [Go](../go)) must agree on what a
+Every implementation ([Python](../python), [Go](../go), [Rust](../rust)) must agree on what a
 seed does. Then one seed replays the same faults in every service of a system,
 whatever language each is written in. This directory is that agreement. Each
 implementation's tests read these files, so if one drifts, its gate fails.
