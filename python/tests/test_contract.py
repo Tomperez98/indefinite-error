@@ -163,13 +163,18 @@ def test_fault_hides_what_its_caller_was_handling(flavor: Flavor, phase: Phase) 
 def test_fault_writes_the_line(flavor: Flavor, capfd: pytest.CaptureFixture[str]) -> None:
     _, op = flavor.recorder(name="logged")
     lines = []
+    messages = []
     for seed in SEEDS:
         with _inject(seed):
             try:
                 op(0)
             except _Abort as e:
+                messages.append(str(e))
                 lines.append(f"indefinite-error: {e.fault}\n")
     assert lines
+    assert messages == [
+        line.removeprefix("indefinite-error: ").removesuffix("\n") for line in lines
+    ]
     assert capfd.readouterr().err == "".join(lines)
 
 

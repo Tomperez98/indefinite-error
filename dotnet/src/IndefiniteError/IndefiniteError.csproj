@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Reproducibly inject indefinite errors (did it happen or not?) into the boundaries of your system.</Description>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IsAotCompatible>true</IsAotCompatible>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <InternalsVisibleTo Include="IndefiniteError.AspNetCore" />
+    <InternalsVisibleTo Include="IndefiniteError.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -60,6 +60,13 @@ servers answer `500` for an app that raises -- so a fault answers `500`, with an
 (a streaming body), the middleware re-raises, and the server closes the
 connection mid-response.
 
+WSGI is the same, except the middleware can hold back `start_response` until the
+first body chunk. A fault before that chunk still answers `500`; one after the
+response has committed re-raises, and the server closes the connection. Because
+a WSGI server folds a repeated header into one comma-separated value, a repeated
+seed is a `400` like any other malformed one -- the middleware can't tell the two
+apart.
+
 Each request gets its own injection, so the seed is its whole input: the same
 seed on the same endpoint takes the same path at step 1 or step 100, under
 concurrency. From the .NET client binding, send a **different seed per request**,
@@ -70,7 +77,8 @@ step, not a counter). Things to know:
 - A seed is an int64: exactly one `X-Indefinite-Seed` value of at most 19
   digits, optionally negative. Anything else -- malformed, out of range, or
   repeated -- gets a `400`, and the app never sees the request
-  ([`spec/seed-header.tsv`](../../spec/seed-header.tsv)).
+  ([`spec/seed-header.tsv`](../../spec/seed-header.tsv)). Under WSGI a repeated
+  header arrives as one comma-separated value, so it is rejected as malformed.
   Requests without the header, and lifespan and websocket scopes, pass
   through untouched.
 - A task group wraps the fault in a `BaseExceptionGroup`; the middleware sees

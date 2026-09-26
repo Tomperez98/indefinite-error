@@ -3,7 +3,7 @@
     @indefinite
     def commit(tx) -> None: ...
 
-    app = indefinite_error.asgi.IndefiniteMiddleware(app)
+    app = indefinite_error.asgi.IndefiniteMiddleware(app)  # or .wsgi for Flask, Django, ...
 
 Outside a request carrying a seed, the decorator does nothing. Inside, a call
 may fault BEFORE the function runs (it never happened) or AFTER it returns or
@@ -88,9 +88,32 @@ def _abort(fault: Fault) -> NoReturn:
     ``os.write`` on fd 2, not ``sys.stderr``: one unbuffered write, so lines
     from concurrent requests don't interleave or wait on a flush.
     """
-    with contextlib.suppress(OSError):  # stderr closed: the response still says it
+    with contextlib.suppress(OSError):  # pragma: no mutate - stderr closed: the response says it
         os.write(2, _report(fault))
     raise _Abort(fault) from None  # not caused by what the caller was handling
+
+
+def _aborted(exc: BaseException) -> Fault | None:
+    """The fault that ended this request, if one did.
+
+    A task group wraps it in a ``BaseExceptionGroup``. Alongside ordinary
+    exceptions the fault still ended the request; alongside a teardown
+    (``KeyboardInterrupt``, ``SystemExit``, cancellation) the teardown wins.
+    """
+    if isinstance(exc, _Abort):
+        return exc.fault
+    if not isinstance(exc, BaseExceptionGroup):
+        return None
+    aborts, rest = exc.split(_Abort)
+    if aborts is None:
+        return None
+    if rest is not None and rest.split(Exception)[1] is not None:
+        return None  # a teardown rides along: it outranks the fault
+    first: BaseException = aborts
+    while isinstance(first, BaseExceptionGroup):
+        first = first.exceptions[0]
+    assert isinstance(first, _Abort), f"split(_Abort) yielded {first!r}"
+    return first.fault
 
 
 # --- Pure core: every decision is a function of (seed, site, n) -------------
