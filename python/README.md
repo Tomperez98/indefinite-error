@@ -1,135 +1,136 @@
 # indefinite-error
 
-Reproducibly inject **indefinite errors** ("it may or may not have happened")
-into the requests your server handles: end a request right before or right
-after a call at your system's boundary, as if the request or its response
-were lost.
+Inject **indefinite errors** — "it may or may not have happened" — into the
+requests your server handles: end a request right before or right after a call
+at your system's boundary, as if the request or its response were lost. Then
+check that your retries can't double-apply a write.
 
 ```python
 from indefinite_error import indefinite
 from indefinite_error.asgi import IndefiniteMiddleware
 
 
-@indefinite
+@indefinite  # mark the boundary write that can lose its outcome
 def commit(tx) -> None:
     tx.commit()
 
 
-app = IndefiniteMiddleware(app)  # requests carrying X-Indefinite-Seed get faults
+app = IndefiniteMiddleware(app)  # tests only: requests carrying X-Indefinite-Seed get faults
 ```
 
-Requires Python 3.12+. No dependencies. For a walkthrough -- a FastAPI
-service, a retrying client, and the double-counting bug it finds -- see
-[`examples/bank`](examples/bank).
+## Install
 
-Outside a request that carries a seed, the decorator does nothing. Inside, each
-call either:
+Requires Python 3.12+. No dependencies.
 
-| Outcome | `commit` runs? | Then |
+```sh
+pip install indefinite-error   # or: uv add indefinite-error
+```
+
+## One call, three outcomes
+
+Outside a request that carries a seed, `@indefinite` does nothing. Inside one,
+each marked call either:
+
+| Outcome | the call runs? | then |
 |---|---|---|
 | pass | yes | the real return value, or the real exception |
 | `before` | no | the request ends: it never happened |
-| `after` | yes, it returned or raised | the request ends: it happened, nobody was told |
+| `after` | yes | the request ends: it happened, but nobody was told |
 
-A teardown `commit` raises -- `KeyboardInterrupt`, `SystemExit`,
-`asyncio.CancelledError` -- outranks the fault and propagates unchanged.
+`before` and `after` are exactly the two ways a write can be indefinite — state
+unchanged, or state changed but the response lost — so a retrying client faces
+the same ambiguity it would in production.
 
-## A fault ends the request
-
-Every fault first writes one line to stderr:
+A fault names the phase, the site, the call number, and the seed, so a CI log is
+enough to replay it:
 
 ```text
 indefinite-error: after app.get#4 (seed=13)
 ```
 
-It names the phase, the site, the call number, and the seed, so a CI log is
-enough to replay it. Then a private exception unwinds the request to the
-middleware, which answers for it. Cleanup runs -- `finally` blocks, `with`
-exits, lock releases -- as it would when a request is cancelled. The server
-and its other requests carry on, and its memory survives.
+It writes that line to stderr and ends only its own request: cleanup runs, the
+server and its other requests carry on. The seed is the only knob, so the same
+seed replays the same faults in any process. [How it works →](docs/how-it-works.md)
 
-The exception is a `BaseException`, so `except Exception` handlers and retry
-loops don't see it, and it isn't exported, so nothing else can name it to
-catch it. Only code that catches `BaseException` without re-raising would
-swallow it -- as it would swallow a cancellation.
+## Try it: one file, no dependencies
 
-The same design carries to runtimes that can abort one request:
-`panic(http.ErrAbortHandler)` in Go, a panic caught at the edge by axum's
-`CatchPanicLayer` in Rust.
+The same `add(1)` under three seeds: one loses the write, one loses the
+response, one is clean.
 
-## The seed is the only knob
+```python
+import asyncio
 
-Each seed picks a fault rate and, per function, which phases may fault (`off`,
-`before`, `after`, `both`), so sweeping seeds covers gentle and brutal runs
-alike (swarm testing). Every decision is a hash of
-`(seed, function, call number)`, counted within the request: the same seed
-replays the same faults, in any process, and calls to one function never shift
-another's faults.
+from indefinite_error import indefinite
+from indefinite_error.asgi import IndefiniteMiddleware
 
-## Over HTTP, with Accordant
+ledger: list[int] = []
 
-[Accordant](https://microsoft.github.io/accordant/docs/how-to/indefinite-failures.html)
-models an indefinite failure as two branches: the request was lost (state
-unchanged) or the response was lost (state changed). `before` and `after`
-cause exactly those two, inside your server:
 
-| Server | Client sees | Accordant branch |
-|---|---|---|
-| no fault | the real 2xx / 4xx | the definite `Expect.That` |
-| `before` | `500` | indefinite, `SameState()` |
-| `after` | `500` | indefinite, success state |
+@indefinite(name="ledger.add")  # the boundary write that can lose its outcome
+def add(amount: int) -> None:
+    ledger.append(amount)
 
-ASGI gives an app no way to drop a connection before its response starts --
-servers answer `500` for an app that raises -- so a fault answers `500`, with
-an `X-Indefinite-Fault` header naming it. If the response had already started
-(a streaming body), the middleware re-raises, and the server closes the
-connection mid-response.
 
-Each request gets its own injection, so the seed is its whole input: the same
-seed on the same endpoint takes the same path at step 1 or step 100, under
-concurrency. From the .NET client binding, send a **different seed per
-request**, derived from one run seed (for concurrent test cases, from the test
-case and step, not a counter). Things to know:
+async def service(scope, receive, send):  # an ordinary ASGI app
+    add(1)
+    await send({"type": "http.response.start", "status": 200, "headers": []})
+    await send({"type": "http.response.body", "body": b"ok"})
 
-- The fault header is for debugging; the spec must not read it.
-- A malformed seed header gets a `400`; the app never sees the request.
-  Requests without the header, and lifespan and websocket scopes, pass through
-  untouched.
-- A task group wraps the fault in a `BaseExceptionGroup`; the middleware sees
-  through it. Beside an ordinary exception the fault still ends the request;
-  beside a teardown, the teardown wins.
-- Installing the middleware twice raises `RuntimeError` on the first seeded
-  request.
-- Never install it in production: any caller could fault your server.
 
-## Details
+async def request(seed: int) -> int:
+    status = 0
 
-- Works on `def` and `async def`; generators are rejected.
-- `@indefinite` must be the innermost decorator: put `@classmethod`,
-  `@staticmethod`, or `@property` above it, not below.
-- A site is named `module.qualname` by default, so two closures from one
-  factory -- or one method on two instances -- share a fault stream. Name them
-  with `@indefinite(name="...")` to give each its own.
-- `name=` is required for lambdas (every lambda in a module would share one
-  site) and lets you wrap any callable, such as a `functools.partial` or an
-  object with `__call__`: `indefinite(name="db.commit")(session.commit)`.
-- A site name goes on the fault line, so it must be printable, with no
-  whitespace: `ValueError` otherwise.
-- A sync function that returns an awaitable raises `TypeError` in a seeded
-  request: when the call returns, the operation hasn't happened yet, so
-  `after` would lie. Make it `async def`, or mark it with
-  `inspect.markcoroutinefunction`.
-- The injection follows `contextvars`: asyncio tasks the request creates and
-  `asyncio.to_thread` see it. A plain thread or `loop.run_in_executor`
-  doesn't, unless its work runs in `contextvars.copy_context().run(fn)` (or,
-  on 3.14+, `threading.Thread(..., context=contextvars.copy_context())`;
-  free-threaded builds pass the context by default). A call that doesn't see
-  the injection is silently never faulted.
-- When the request ends, its injection closes: a task that outlives it calls
-  through with no faults.
-- Within one request, calls to the same function are numbered in order. If
-  concurrent tasks inside one request race on the same function, who gets
-  which number is up to the scheduler.
+    async def send(message):
+        nonlocal status
+        if message["type"] == "http.response.start":
+            status = message["status"]
+
+    scope = {"type": "http", "headers": [(b"x-indefinite-seed", str(seed).encode())]}
+    await IndefiniteMiddleware(service)(scope, receive=None, send=send)
+    return status
+
+
+for seed in (70, 74, 0):
+    ledger.clear()
+    print(f"seed={seed}: status={asyncio.run(request(seed))}, ledger={ledger}")
+```
+
+```text
+indefinite-error: before ledger.add#0 (seed=70)
+indefinite-error: after ledger.add#0 (seed=74)
+seed=70: status=500, ledger=[]
+seed=74: status=500, ledger=[1]
+seed=0: status=200, ledger=[1]
+```
+
+`seed=70` faults *before*: the write never happened. `seed=74` faults *after*:
+the write committed, so a client that retries on the `500` applies it a second
+time — the bug this library exists to find. `seed=0` runs clean.
+
+## Use it on your service
+
+1. Put `@indefinite` on the calls whose outcome can get lost: database commits,
+   calls to other services, messages you publish.
+2. Install `IndefiniteMiddleware` behind a flag that is off in production.
+3. Send a different seed on every request, derived from one run seed. Treat a
+   `500` as "may or may not have happened", and check your invariants afterwards.
+   From .NET, [Accordant](https://microsoft.github.io/accordant/docs/how-to/indefinite-failures.html)
+   drives the two branches for you.
+
+## Example: a bank that must not double-count
+
+[`examples/bank`](examples/bank) is a FastAPI + SQLite bank with a retrying
+client. Under injection an unkeyed deposit double-counts, and the fault lines
+say why; an idempotency key fixes it. [Walkthrough →](examples/bank)
+
+| | runs wrong (of 50) |
+|---|---|
+| unkeyed deposits | 39 — e.g. `balance 21, expected 20` |
+| keyed deposits | 0 |
+
+```sh
+cd examples/bank && uv run pytest
+```
 
 ## Development
 
@@ -143,4 +144,17 @@ case and step, not a counter). Things to know:
 CI runs `./ci` on 3.12, 3.13, 3.14, and 3.14t. `tests/golden/schedule.txt`
 pins the fault schedule, so a change that would shift every saved seed fails
 loudly; regenerate it only on purpose, with
-`uv run python -m tests.test_core --regen`.
+`uv run python -m tests.test_core --regen`. Until the package is on PyPI, run
+from a clone with `uv sync`.
+
+## Examples
+
+`examples/` holds separate [uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/)
+members. Each is its own project with its own dependencies, resolved with the
+library into one lockfile, and the root `dev` group depends on them, so
+`uv run pytest` at the root runs the example tests too. To run one alone, from
+its own directory:
+
+```sh
+cd examples/bank && uv run pytest
+```

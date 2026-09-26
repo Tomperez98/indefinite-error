@@ -1,0 +1,19 @@
+[project]
+name = "indefinite-error-bank"
+version = "0.0.0"
+description = "Example: a bank that must not double-count, tested under indefinite errors."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "indefinite-error",
+    "fastapi>=0.141.1",
+    "httpx2>=2.13.1",
+    "uvicorn>=0.54.0",
+]
+
+[tool.uv]
+# bank.py is a module, not a package: resolve the member, don't install it.
+package = false
+
+[tool.uv.sources]
+indefinite-error = { workspace = true }

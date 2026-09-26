@@ -13,9 +13,18 @@ dependencies = []
 requires = ["uv_build>=0.12.17,<0.13.0"]
 build-backend = "uv_build"
 
+[tool.uv.workspace]
+# Each example is its own project with its own dependencies, resolved together
+# with the library into one lockfile.
+members = ["examples/*"]
+
+[tool.uv.sources]
+# The root dev group depends on the examples, so `uv run pytest` at the root
+# installs their dependencies and runs their tests too.
+indefinite-error-bank = { workspace = true }
 
 [tool.pytest.ini_options]
-# The example runs in the gate too, so it can't rot.
+# Examples are workspace members but run in the root gate too, so they can't rot.
 testpaths = ["tests", "examples"]
 # A "coroutine was never awaited" warning means an operation silently didn't run.
 filterwarnings = ["error"]
@@ -45,6 +54,5 @@ dev = [
     "ruff>=0.16.9",
     "ty>=0.0.84",
     "mutmut>=3.8.0",
-    "fastapi>=0.141.1",
-    "httpx2>=2.13.1",
+    "indefinite-error-bank",
 ]
